@@ -248,32 +248,28 @@ class ResellerPackage extends AddonModule
 
     public function ClientAreaEndBody($vars = [])
     {
-// 1. Check if logged in (using $this->user, no need for session now)
-if (empty($this->user) || empty($this->user["id"])) {
-    return '';
-}
 
-// 2. Get user ID from WISECP
-$user_id = (int) $this->user["id"];
+        if (empty($this->user) || empty($this->user["id"])) {
+            return '';
+        }
 
-// 3. Define reseller groups
-$reseller_group_ids = [13];
+        $user_id = (int) $this->user["id"];
 
-// 4. Fetch ONLY group_id (minimal query)
-$user = WDB::select("group_id")
-    ->from("users")
-    ->where("id", "=", $user_id)
-    ->build(true)
-    ->fetch_assoc();
+        $reseller_group_ids = [13];
 
-$group_id = ($user && isset($user[0]["group_id"])) 
-    ? (int) $user[0]["group_id"] 
-    : 0;
+        $user = WDB::select("group_id")
+            ->from("users")
+            ->where("id", "=", $user_id)
+            ->build(true)
+            ->fetch_assoc();
 
-// 5. Validate reseller
-if (!in_array($group_id, $reseller_group_ids, true)) {
-    return '';
-}
+        $group_id = ($user && isset($user[0]["group_id"]))
+            ? (int) $user[0]["group_id"]
+            : 0;
+
+        if (!in_array($group_id, $reseller_group_ids, true)) {
+            return '';
+        }
         $settings    = isset($this->config['settings']) ? $this->config['settings'] : [];
         $cart_label  = isset($settings['add_to_cart_label'])
             ? trim($settings['add_to_cart_label'])
@@ -293,10 +289,8 @@ if (!in_array($group_id, $reseller_group_ids, true)) {
                 ? trim($settings["page_{$i}_product_ids"])
                 : '';
 
-            // Skip empty/disabled slots
             if (!$product_ids_raw) continue;
 
-            // Both path and slug must match if provided
             if ($page_path && strpos($current_uri, $page_path) === false) continue;
             if ($page_slug && strpos($current_uri, $page_slug) === false) continue;
 
@@ -305,7 +299,7 @@ if (!in_array($group_id, $reseller_group_ids, true)) {
                     array_map('intval', array_map('trim', explode(',', $product_ids_raw)))
                 )
             );
-            break; // Stop at the first matching slot
+            break;
         }
 
         if (empty($matched_product_ids)) return '';
