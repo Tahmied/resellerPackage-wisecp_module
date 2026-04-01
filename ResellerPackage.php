@@ -246,9 +246,72 @@ class ResellerPackage extends AddonModule
         return $cards_html;
     }
 
+    public function ClientAreaOrderGuard($vars = [])
+    {
+        $current_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+
+        // Only act on order-steps pages
+        if (!preg_match('#/order-steps/[^/]+/(\d+)#', $current_uri, $matches)) {
+            return '';
+        }
+
+        $current_product_id = (int) $matches[1];
+        if (!$current_product_id) return '';
+
+        // Build the full list of restricted product IDs across all pages
+        $settings           = isset($this->config['settings']) ? $this->config['settings'] : [];
+        $all_restricted_ids = [];
+
+        for ($i = 1; $i <= self::MAX_PAGES; $i++) {
+            $raw = isset($settings["page_{$i}_product_ids"])
+                ? trim($settings["page_{$i}_product_ids"])
+                : '';
+            if (!$raw) continue;
+
+            $ids = array_values(
+                array_filter(
+                    array_map('intval', array_map('trim', explode(',', $raw)))
+                )
+            );
+            $all_restricted_ids = array_merge($all_restricted_ids, $ids);
+        }
+
+        $all_restricted_ids = array_unique($all_restricted_ids);
+
+        // Not a restricted product — nothing to do
+        if (!in_array($current_product_id, $all_restricted_ids, true)) {
+            return '';
+        }
+
+        // Guest users are never resellers — redirect immediately
+        if (empty($this->user['id'])) {
+            header("Location: /");
+            exit;
+        }
+
+        $reseller_group_ids = [13];
+        $user_id            = (int) $this->user['id'];
+
+        $row = WDB::select("group_id")
+            ->from("users")
+            ->where("id", "=", $user_id)
+            ->build(true)
+            ->fetch_assoc();
+
+        $group_id = ($row && isset($row[0]["group_id"])) ? (int) $row[0]["group_id"] : 0;
+
+        // Allowed reseller — let them through
+        if (in_array($group_id, $reseller_group_ids, true)) {
+            return '';
+        }
+
+        // Everyone else gets a hard redirect
+        header("Location: /");
+        exit;
+    }
+
     public function ClientAreaEndBody($vars = [])
     {
-
         if (empty($this->user) || empty($this->user["id"])) {
             return '';
         }
@@ -270,12 +333,13 @@ class ResellerPackage extends AddonModule
         if (!in_array($group_id, $reseller_group_ids, true)) {
             return '';
         }
-        $settings    = isset($this->config['settings']) ? $this->config['settings'] : [];
-        $cart_label  = isset($settings['add_to_cart_label'])
+
+        $settings   = isset($this->config['settings']) ? $this->config['settings'] : [];
+        $cart_label = isset($settings['add_to_cart_label'])
             ? trim($settings['add_to_cart_label'])
             : 'Add to Cart';
-        $current_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
 
+        $current_uri         = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
         $matched_product_ids = null;
 
         for ($i = 1; $i <= self::MAX_PAGES; $i++) {
@@ -362,4 +426,9 @@ HTML;
 Hook::add("ClientAreaEndBody", 1, [
     "class"  => "ResellerPackage",
     "method" => "ClientAreaEndBody"
+]);
+
+Hook::add("ClientAreaHeadMetaTags", 1, [
+    "class"  => "ResellerPackage",
+    "method" => "ClientAreaOrderGuard"
 ]);
